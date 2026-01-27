@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Shield, Eye, EyeOff, ArrowRight, Check } from "lucide-react";
+import { Shield, Eye, EyeOff, ArrowRight, Check, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 const plans = [
   { value: "starter", label: "Starter - $19/mo", description: "50 watermarks, 500 scans" },
@@ -35,7 +37,10 @@ const benefits = [
 ];
 
 export default function SignupPage() {
+  const navigate = useNavigate();
+  const { signUp, user } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -45,10 +50,41 @@ export default function SignupPage() {
     agreeToTerms: false,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Redirect if already logged in
+  if (user) {
+    navigate("/dashboard");
+    return null;
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Navigate to dashboard (mock for now)
-    window.location.href = "/dashboard";
+
+    if (formData.password.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+
+    if (!formData.agreeToTerms) {
+      toast.error("Please agree to the terms and conditions");
+      return;
+    }
+
+    setLoading(true);
+
+    const { error } = await signUp(formData.email, formData.password, formData.name);
+
+    if (error) {
+      if (error.message.includes("already registered")) {
+        toast.error("This email is already registered. Please sign in instead.");
+      } else {
+        toast.error(error.message || "Failed to create account");
+      }
+      setLoading(false);
+      return;
+    }
+
+    toast.success("Account created! Welcome to CreatorShield.");
+    navigate("/dashboard");
   };
 
   const passwordStrength = () => {
@@ -216,10 +252,19 @@ export default function SignupPage() {
               variant="hero" 
               size="lg" 
               className="w-full"
-              disabled={!formData.agreeToTerms}
+              disabled={!formData.agreeToTerms || loading}
             >
-              Start 14-Day Free Trial
-              <ArrowRight className="h-4 w-4" />
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating account...
+                </>
+              ) : (
+                <>
+                  Start 14-Day Free Trial
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
             </Button>
           </form>
 
