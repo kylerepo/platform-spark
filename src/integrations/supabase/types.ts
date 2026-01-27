@@ -14,16 +14,303 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      platform_settings: {
+        Row: {
+          description: string | null
+          id: string
+          setting_key: string
+          setting_value: Json
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          setting_key: string
+          setting_value: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      support_tickets: {
+        Row: {
+          assigned_to: string | null
+          created_at: string | null
+          description: string
+          id: string
+          priority: string | null
+          status: Database["public"]["Enums"]["ticket_status"] | null
+          subject: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string | null
+          description: string
+          id?: string
+          priority?: string | null
+          status?: Database["public"]["Enums"]["ticket_status"] | null
+          subject: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string | null
+          description?: string
+          id?: string
+          priority?: string | null
+          status?: Database["public"]["Enums"]["ticket_status"] | null
+          subject?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      system_analytics: {
+        Row: {
+          id: string
+          metadata: Json | null
+          metric_type: string
+          metric_value: number
+          recorded_at: string | null
+        }
+        Insert: {
+          id?: string
+          metadata?: Json | null
+          metric_type: string
+          metric_value: number
+          recorded_at?: string | null
+        }
+        Update: {
+          id?: string
+          metadata?: Json | null
+          metric_type?: string
+          metric_value?: number
+          recorded_at?: string | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      watermark_files: {
+        Row: {
+          created_at: string | null
+          file_name: string
+          file_size: number | null
+          file_type: string
+          id: string
+          job_id: string
+          metadata: Json | null
+          original_file_path: string
+          status: Database["public"]["Enums"]["watermark_job_status"] | null
+          user_id: string
+          watermarked_file_path: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          file_name: string
+          file_size?: number | null
+          file_type: string
+          id?: string
+          job_id: string
+          metadata?: Json | null
+          original_file_path: string
+          status?: Database["public"]["Enums"]["watermark_job_status"] | null
+          user_id: string
+          watermarked_file_path?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          file_name?: string
+          file_size?: number | null
+          file_type?: string
+          id?: string
+          job_id?: string
+          metadata?: Json | null
+          original_file_path?: string
+          status?: Database["public"]["Enums"]["watermark_job_status"] | null
+          user_id?: string
+          watermarked_file_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watermark_files_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "watermark_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watermark_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          id: string
+          job_name: string
+          processed_files: number | null
+          scheduled_at: string | null
+          settings: Json | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["watermark_job_status"] | null
+          template_id: string | null
+          total_files: number | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          job_name: string
+          processed_files?: number | null
+          scheduled_at?: string | null
+          settings?: Json | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["watermark_job_status"] | null
+          template_id?: string | null
+          total_files?: number | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          job_name?: string
+          processed_files?: number | null
+          scheduled_at?: string | null
+          settings?: Json | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["watermark_job_status"] | null
+          template_id?: string | null
+          total_files?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watermark_jobs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "watermark_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watermark_templates: {
+        Row: {
+          add_timestamp: boolean | null
+          audio_watermark: boolean | null
+          created_at: string | null
+          custom_payload: Json | null
+          id: string
+          name: string
+          position: string | null
+          strength: number | null
+          user_id: string
+          watermark_type: string | null
+        }
+        Insert: {
+          add_timestamp?: boolean | null
+          audio_watermark?: boolean | null
+          created_at?: string | null
+          custom_payload?: Json | null
+          id?: string
+          name: string
+          position?: string | null
+          strength?: number | null
+          user_id: string
+          watermark_type?: string | null
+        }
+        Update: {
+          add_timestamp?: boolean | null
+          audio_watermark?: boolean | null
+          created_at?: string | null
+          custom_payload?: Json | null
+          id?: string
+          name?: string
+          position?: string | null
+          strength?: number | null
+          user_id?: string
+          watermark_type?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
+      ticket_status: "open" | "in_progress" | "resolved" | "closed"
+      watermark_job_status: "pending" | "processing" | "completed" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +437,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+      ticket_status: ["open", "in_progress", "resolved", "closed"],
+      watermark_job_status: ["pending", "processing", "completed", "failed"],
+    },
   },
 } as const
