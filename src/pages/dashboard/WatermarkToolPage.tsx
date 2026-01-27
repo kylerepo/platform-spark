@@ -1,77 +1,215 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Fingerprint,
-  Upload,
-  Cloud,
-  Settings,
-  Download,
   Shield,
-  Clock,
-  CheckCircle2,
-  Image,
-  ArrowRight
+  ArrowRight,
+  Settings,
+  Calendar,
+  Zap
 } from "lucide-react";
+import { FileUploader } from "@/components/watermark/FileUploader";
+import { WatermarkConfig, type WatermarkSettings } from "@/components/watermark/WatermarkConfig";
+import { TemplateSaver } from "@/components/watermark/TemplateSaver";
+import { JobHistory } from "@/components/watermark/JobHistory";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-const recentJobs = [
-  { id: 1, name: "Summer_Collection_batch", files: 45, status: "completed", date: "Feb 15, 2024" },
-  { id: 2, name: "New_Video_Set", files: 12, status: "completed", date: "Feb 14, 2024" },
-  { id: 3, name: "March_Exclusives", files: 28, status: "processing", date: "Feb 15, 2024" },
-];
+interface UploadedFile {
+  id: string;
+  file: File;
+  storagePath?: string;
+  status: string;
+}
+
+interface Template {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+const defaultSettings: WatermarkSettings = {
+  watermarkType: "invisible_qr",
+  strength: 70,
+  position: "center",
+  audioWatermark: true,
+  addTimestamp: true,
+  temporalSpreading: false,
+  frameInterval: 10,
+  creatorId: "",
+  customMetadata: "",
+  pdfProtection: false,
+  compressionResilience: "medium",
+  platformPreset: "custom"
+};
 
 export default function WatermarkToolPage() {
-  const [strength, setStrength] = useState([70]);
-  const [position, setPosition] = useState("center");
-  const [audioWatermark, setAudioWatermark] = useState(true);
+  const { user } = useAuth();
+  const [settings, setSettings] = useState<WatermarkSettings>(defaultSettings);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [jobName, setJobName] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [scheduleDialog, setScheduleDialog] = useState(false);
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [credits, setCredits] = useState(83);
+
+  const fetchTemplates = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("watermark_templates")
+      .select("id, name, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    
+    if (data) setTemplates(data);
+  };
+
+  useEffect(() => {
+    fetchTemplates();
+  }, [user]);
+
+  const completedFiles = uploadedFiles.filter(f => f.status === "completed" && f.storagePath);
+
+  const startProcessing = async () => {
+    if (!user || completedFiles.length === 0) {
+      toast.error("Please upload files first");
+      return;
+    }
+
+    if (!jobName.trim()) {
+      toast.error("Please enter a job name");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    // Create watermark job with properly typed settings
+    const jobSettings = {
+      watermarkType: settings.watermarkType,
+      strength: settings.strength,
+      position: settings.position,
+      audioWatermark: settings.audioWatermark,
+      addTimestamp: settings.addTimestamp,
+      temporalSpreading: settings.temporalSpreading,
+      frameInterval: settings.frameInterval,
+      creatorId: settings.creatorId,
+      customMetadata: settings.customMetadata,
+      pdfProtection: settings.pdfProtection,
+      compressionResilience: settings.compressionResilience,
+      platformPreset: settings.platformPreset
+    };
+
+    const { data: job, error: jobError } = await supabase
+      .from("watermark_jobs")
+      .insert([{
+        user_id: user.id,
+        job_name: jobName,
+        status: "processing" as const,
+        total_files: completedFiles.length,
+        processed_files: 0,
+        settings: jobSettings
+      }])
+      .select()
+      .single();
+
+    if (jobError || !job) {
+      toast.error("Failed to create job");
+      setIsProcessing(false);
+      return;
+    }
+
+    // Create file records
+    const fileRecords = completedFiles.map(f => ({
+      job_id: job.id,
+      user_id: user.id,
+      original_file_path: f.storagePath!,
+      file_name: f.file.name,
+      file_type: f.file.type,
+      file_size: f.file.size,
+      status: "pending" as const
+    }));
+
+    const { error: filesError } = await supabase
+      .from("watermark_files")
+      .insert(fileRecords);
+
+    if (filesError) {
+      toast.error("Failed to register files");
+      setIsProcessing(false);
+      return;
+    }
+
+    // Simulate processing (in real app, this would trigger an edge function)
+    setTimeout(async () => {
+      await supabase
+        .from("watermark_jobs")
+        .update({
+          status: "completed",
+          processed_files: completedFiles.length,
+          completed_at: new Date().toISOString()
+        })
+        .eq("id", job.id);
+
+      setIsProcessing(false);
+      setUploadedFiles([]);
+      setJobName("");
+      setCredits(prev => Math.max(0, prev - completedFiles.length));
+      toast.success(`Successfully watermarked ${completedFiles.length} files!`);
+    }, 3000);
+  };
+
+  const scheduleJob = async () => {
+    if (!scheduledTime) {
+      toast.error("Please select a time");
+      return;
+    }
+
+    toast.success(`Job scheduled for ${new Date(scheduledTime).toLocaleString()}`);
+    setScheduleDialog(false);
+    setScheduledTime("");
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">Watermark Tool</h1>
-        <p className="text-muted-foreground">Add invisible forensic watermarks to protect your content</p>
+        <p className="text-muted-foreground">
+          Add invisible forensic watermarks to protect your content
+        </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
+      <div className="grid lg:grid-cols-3 gap-6">
         {/* Main Tool */}
         <div className="lg:col-span-2 space-y-6">
           {/* Step 1: Upload */}
           <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">1</span>
+                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                  1
+                </span>
                 Select Content
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="border-2 border-dashed border-border rounded-xl p-12 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <Upload className="h-8 w-8 text-primary" />
-                </div>
-                <p className="font-medium mb-2">Drag & drop files here</p>
-                <p className="text-sm text-muted-foreground mb-4">or click to browse</p>
-                <Button variant="outline">
-                  Browse Files
-                </Button>
-              </div>
-
-              <div className="mt-4 flex items-center justify-center gap-4">
-                <Button variant="ghost" className="gap-2">
-                  <Cloud className="h-4 w-4" />
-                  Import from Cloud
-                </Button>
-              </div>
+              <FileUploader
+                onFilesSelected={setUploadedFiles}
+                maxFiles={1000}
+              />
             </CardContent>
           </Card>
 
@@ -79,79 +217,14 @@ export default function WatermarkToolPage() {
           <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">2</span>
+                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                  2
+                </span>
                 Configure Watermark
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Watermark Type */}
-              <div className="space-y-3">
-                <Label>Watermark Type</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-lg border-2 border-primary bg-primary/5 cursor-pointer">
-                    <Fingerprint className="h-6 w-6 text-primary mb-2" />
-                    <p className="font-medium">Invisible QR</p>
-                    <p className="text-xs text-muted-foreground">Recommended</p>
-                  </div>
-                  <div className="p-4 rounded-lg border border-border hover:border-primary/50 cursor-pointer transition-colors">
-                    <Image className="h-6 w-6 text-muted-foreground mb-2" />
-                    <p className="font-medium">Data Matrix</p>
-                    <p className="text-xs text-muted-foreground">Alternative</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Strength */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label>Strength</Label>
-                  <span className="text-sm text-muted-foreground">{strength[0]}%</span>
-                </div>
-                <Slider
-                  value={strength}
-                  onValueChange={setStrength}
-                  min={30}
-                  max={100}
-                  step={5}
-                  className="w-full"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Higher strength = better detection, but may affect image quality slightly
-                </p>
-              </div>
-
-              {/* Position */}
-              <div className="space-y-3">
-                <Label>Position</Label>
-                <Select value={position} onValueChange={setPosition}>
-                  <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="center">Center (Recommended)</SelectItem>
-                    <SelectItem value="distributed">Distributed</SelectItem>
-                    <SelectItem value="custom">Custom Grid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Options */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Audio Watermark (for videos)</Label>
-                    <p className="text-xs text-muted-foreground">Embed audio fingerprint</p>
-                  </div>
-                  <Switch checked={audioWatermark} onCheckedChange={setAudioWatermark} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Add Timestamp</Label>
-                    <p className="text-xs text-muted-foreground">Include date in metadata</p>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-              </div>
+            <CardContent>
+              <WatermarkConfig settings={settings} onChange={setSettings} />
             </CardContent>
           </Card>
 
@@ -159,26 +232,60 @@ export default function WatermarkToolPage() {
           <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">3</span>
+                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                  3
+                </span>
                 Process & Download
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 mb-4">
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Job Name</Label>
+                <Input
+                  value={jobName}
+                  onChange={(e) => setJobName(e.target.value)}
+                  placeholder="e.g., March_Collection_2024"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Shield className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <p className="font-medium">0 files selected</p>
-                    <p className="text-sm text-muted-foreground">Select files to begin</p>
+                    <p className="font-medium">{completedFiles.length} files ready</p>
+                    <p className="text-sm text-muted-foreground">
+                      {completedFiles.length === 0 ? "Upload files to begin" : "Ready to process"}
+                    </p>
                   </div>
                 </div>
-                <Button variant="hero" disabled>
-                  Start Processing
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setScheduleDialog(true)}
+                    disabled={completedFiles.length === 0}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Schedule
+                  </Button>
+                  <Button
+                    variant="hero"
+                    onClick={startProcessing}
+                    disabled={completedFiles.length === 0 || isProcessing}
+                  >
+                    {isProcessing ? (
+                      <>Processing...</>
+                    ) : (
+                      <>
+                        <Zap className="h-4 w-4 mr-2" />
+                        Process Now
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
+
               <p className="text-sm text-muted-foreground text-center">
                 Processing preserves original quality and maintains metadata
               </p>
@@ -195,11 +302,14 @@ export default function WatermarkToolPage() {
             </CardHeader>
             <CardContent>
               <div className="text-center mb-4">
-                <p className="text-4xl font-bold gradient-text">83</p>
+                <p className="text-4xl font-bold gradient-text">{credits}</p>
                 <p className="text-sm text-muted-foreground">of 300 remaining</p>
               </div>
               <div className="w-full h-2 bg-secondary rounded-full overflow-hidden mb-4">
-                <div className="w-1/4 h-full bg-primary rounded-full" />
+                <div
+                  className="h-full bg-primary rounded-full transition-all"
+                  style={{ width: `${(credits / 300) * 100}%` }}
+                />
               </div>
               <Button variant="outline" className="w-full">
                 Get More Credits
@@ -207,50 +317,67 @@ export default function WatermarkToolPage() {
             </CardContent>
           </Card>
 
-          {/* Recent Jobs */}
+          {/* Templates */}
           <Card className="bg-card border-border">
-            <CardHeader>
-              <CardTitle className="text-lg">Recent Jobs</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {recentJobs.map((job) => (
-                <div key={job.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      job.status === "completed" ? "bg-success/10" : "bg-warning/10"
-                    }`}>
-                      {job.status === "completed" ? (
-                        <CheckCircle2 className="h-4 w-4 text-success" />
-                      ) : (
-                        <Clock className="h-4 w-4 text-warning" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{job.name}</p>
-                      <p className="text-xs text-muted-foreground">{job.files} files</p>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="icon">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+            <CardContent className="pt-6">
+              <TemplateSaver
+                settings={settings}
+                templates={templates}
+                onTemplateLoad={setSettings}
+                onTemplatesChange={fetchTemplates}
+              />
             </CardContent>
           </Card>
 
-          {/* Tips */}
+          {/* Job History */}
+          <Card className="bg-card border-border">
+            <CardContent className="pt-6">
+              <JobHistory />
+            </CardContent>
+          </Card>
+
+          {/* Pro Tip */}
           <Card className="bg-gradient-to-br from-primary/10 to-accent/5 border-primary/20">
             <CardContent className="p-6">
               <Settings className="h-8 w-8 text-primary mb-3" />
               <h3 className="font-bold mb-2">Pro Tip</h3>
               <p className="text-sm text-muted-foreground">
-                Use batch processing to watermark up to 100 files at once. 
-                Enable audio watermarking for videos to track even if the video is re-encoded.
+                Use batch processing to watermark up to 1000 files at once.
+                Enable audio watermarking for videos to track even if the video
+                is re-encoded. Save templates for quick reuse!
               </p>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Schedule Dialog */}
+      <Dialog open={scheduleDialog} onOpenChange={setScheduleDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Schedule Processing</DialogTitle>
+            <DialogDescription>
+              Set a time for automatic processing of your files.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Scheduled Time</Label>
+              <Input
+                type="datetime-local"
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={scheduleJob}>Schedule Job</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

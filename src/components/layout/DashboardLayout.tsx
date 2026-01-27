@@ -1,4 +1,4 @@
-import { Link, useLocation, Outlet } from "react-router-dom";
+import { Link, useLocation, Outlet, Navigate } from "react-router-dom";
 import { 
   Shield, 
   LayoutDashboard, 
@@ -14,7 +14,8 @@ import {
   Search,
   LogOut,
   ChevronDown,
-  Menu
+  Menu,
+  ShieldAlert
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 const sidebarLinks = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -47,6 +49,21 @@ const bottomLinks = [
 export default function DashboardLayout() {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, isAdmin, signOut, loading } = useAuth();
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Redirect if not logged in
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -93,6 +110,16 @@ export default function DashboardLayout() {
             </Link>
           );
         })}
+        {/* Admin Link */}
+        {isAdmin && (
+          <Link
+            to="/admin"
+            className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-destructive hover:bg-destructive/10"
+          >
+            <ShieldAlert className="h-5 w-5" />
+            <span className="font-medium">Admin Panel</span>
+          </Link>
+        )}
       </nav>
 
       {/* Bottom Nav */}
@@ -181,9 +208,13 @@ export default function DashboardLayout() {
                 <Button variant="ghost" className="flex items-center gap-2 px-2">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src="" />
-                    <AvatarFallback className="bg-primary/20 text-primary">SC</AvatarFallback>
+                    <AvatarFallback className="bg-primary/20 text-primary">
+                      {user?.email?.charAt(0).toUpperCase() || "U"}
+                    </AvatarFallback>
                   </Avatar>
-                  <span className="hidden md:block font-medium">Sarah Chen</span>
+                  <span className="hidden md:block font-medium">
+                    {user?.email?.split("@")[0] || "User"}
+                  </span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
@@ -202,8 +233,19 @@ export default function DashboardLayout() {
                   <HelpCircle className="h-4 w-4 mr-2" />
                   Help & Support
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link to="/admin" className="flex items-center text-destructive">
+                        <ShieldAlert className="h-4 w-4 mr-2" />
+                        Admin Panel
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive">
+                <DropdownMenuItem className="text-destructive" onClick={signOut}>
                   <LogOut className="h-4 w-4 mr-2" />
                   Log out
                 </DropdownMenuItem>
