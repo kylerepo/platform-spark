@@ -112,63 +112,79 @@ export default function WatermarkToolPage() {
       platformPreset: settings.platformPreset
     };
 
-    const { data: job, error: jobError } = await supabase
-      .from("watermark_jobs")
-      .insert([{
-        user_id: user.id,
-        job_name: jobName,
-        status: "processing" as const,
-        total_files: completedFiles.length,
-        processed_files: 0,
-        settings: jobSettings
-      }])
-      .select()
-      .single();
-
-    if (jobError || !job) {
-      toast.error("Failed to create job");
-      setIsProcessing(false);
-      return;
-    }
-
-    // Create file records
-    const fileRecords = completedFiles.map(f => ({
-      job_id: job.id,
-      user_id: user.id,
-      original_file_path: f.storagePath!,
-      file_name: f.file.name,
-      file_type: f.file.type,
-      file_size: f.file.size,
-      status: "pending" as const
-    }));
-
-    const { error: filesError } = await supabase
-      .from("watermark_files")
-      .insert(fileRecords);
-
-    if (filesError) {
-      toast.error("Failed to register files");
-      setIsProcessing(false);
-      return;
-    }
-
-    // Simulate processing (in real app, this would trigger an edge function)
-    setTimeout(async () => {
-      await supabase
+    try {
+      const { data: job, error: jobError } = await supabase
         .from("watermark_jobs")
-        .update({
-          status: "completed",
-          processed_files: completedFiles.length,
-          completed_at: new Date().toISOString()
-        })
-        .eq("id", job.id);
+        .insert([{
+          user_id: user.id,
+          job_name: jobName,
+          status: "pending" as const,
+          total_files: completedFiles.length,
+          processed_files: 0,
+          settings: jobSettings
+        }])
+        .select()
+        .single();
+
+      if (jobError || !job) {
+        toast.error("Failed to create job");
+        setIsProcessing(false);
+        return;
+      }
+
+      // Create file records
+      const fileRecords = completedFiles.map(f => ({
+        job_id: job.id,
+        user_id: user.id,
+        original_file_path: f.storagePath!,
+        file_name: f.file.name,
+        file_type: f.file.type,
+        file_size: f.file.size,
+        status: "pending" as const
+      }));
+
+      const { data: insertedFiles, error: filesError } = await supabase
+        .from("watermark_files")
+        .insert(fileRecords)
+        .select();
+
+      if (filesError || !insertedFiles) {
+        toast.error("Failed to register files");
+        setIsProcessing(false);
+        return;
+      }
+
+      // Call the edge function to process watermarks
+      const { data, error } = await supabase.functions.invoke("process-watermark", {
+        body: {
+          jobId: job.id,
+          fileIds: insertedFiles.map(f => f.id),
+          settings: jobSettings
+        }
+      });
+
+      if (error) {
+        console.error("Watermark processing error:", error);
+        toast.error("Failed to process watermarks");
+        setIsProcessing(false);
+        return;
+      }
 
       setIsProcessing(false);
       setUploadedFiles([]);
       setJobName("");
       setCredits(prev => Math.max(0, prev - completedFiles.length));
-      toast.success(`Successfully watermarked ${completedFiles.length} files!`);
-    }, 3000);
+      
+      if (data?.errors?.length > 0) {
+        toast.warning(`Processed ${data.processedCount}/${data.totalFiles} files with some errors`);
+      } else {
+        toast.success(`Successfully watermarked ${data.processedCount} files with AI-powered encoding!`);
+      }
+    } catch (error) {
+      console.error("Processing error:", error);
+      toast.error("An error occurred during processing");
+      setIsProcessing(false);
+    }
   };
 
   const scheduleJob = async () => {

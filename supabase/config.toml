@@ -1,1 +1,4 @@
 project_id = "essuhipgsqyliypbzyco"
+
+[functions.process-watermark]
+verify_jwt = false
