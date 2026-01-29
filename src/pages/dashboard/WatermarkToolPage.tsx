@@ -15,6 +15,7 @@ import { FileUploader } from "@/components/watermark/FileUploader";
 import { WatermarkConfig, type WatermarkSettings } from "@/components/watermark/WatermarkConfig";
 import { TemplateSaver } from "@/components/watermark/TemplateSaver";
 import { JobHistory } from "@/components/watermark/JobHistory";
+import { WatermarkVerifier } from "@/components/watermark/WatermarkVerifier";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -351,6 +352,9 @@ export default function WatermarkToolPage() {
               <JobHistory />
             </CardContent>
           </Card>
+
+          {/* Watermark Verifier */}
+          <WatermarkVerifier />
 
           {/* Pro Tip */}
           <Card className="bg-gradient-to-br from-primary/10 to-accent/5 border-primary/20">
